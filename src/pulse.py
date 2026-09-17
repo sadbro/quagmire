@@ -7,27 +7,33 @@ from matplotlib import pyplot as plt
 
 
 class StandingPulse:
-    def __init__(self, coefficients: np.ndarray, wave_vectors: np.ndarray | float, phases: np.ndarray | float):
+    def __init__(self, coefficients: np.ndarray, wave_vectors: np.ndarray | float, phases: np.ndarray | float,
+                 ws: np.ndarray | float = 0):
         n_wavelets = len(coefficients)
         self.shape = (n_wavelets, 2)
         self.coefficients = transform(coefficients, self.shape)
         self.kss = transform(wave_vectors, self.shape)
         self.phases = transform(phases, self.shape)
+        self.time_weights = transform(ws, self.shape)
         self.wavelets = [
             Wavelet(cs[0], cs[1], kcs[0], kcs[1], phi[0], phi[1]) for cs, kcs, phi in
             zip(self.coefficients, self.kss, self.phases)
         ]
 
-    def __call__(self, x, bias=0):
+    def __call__(self, x, bias: float=0):
         y = bias
         for wavelet in self.wavelets:
             y += wavelet(x)
         return y
 
     def __add__(self, other):
-        return StandingPulse.from_wavelets([*self.wavelets, *other.wavelets])
+        combined_wavelets = [*self.wavelets, *other.wavelets]
+        combined_ws = np.concatenate([self.time_weights, other.time_weights])
+        if isinstance(self, Pulse) or isinstance(other, Pulse) or np.any(combined_ws != 0):
+            return Pulse.from_wavelets(combined_wavelets, ws=combined_ws)
+        return StandingPulse.from_wavelets(combined_wavelets)
 
-    def draw(self, xrange, bias=0, grid=False):
+    def draw(self, xrange, bias: float=0, grid: bool=False):
         plt.plot(xrange, self(xrange, bias))
         plt.grid(grid)
         plt.show()
@@ -66,9 +72,10 @@ class Pulse(StandingPulse):
                 The 'ws' argument cannot be None. It is the time coefficients for the wavelets in the pulse which make them a pulse.
                 If you want a standing pulse, use the StandingPulse class instead.
                 """)
-        super().__init__(coefficients, wave_vectors, phases)
-        self.time_weights = transform(ws, self.shape)
-        self.wavelets = lambda t: [
+        super().__init__(coefficients, wave_vectors, phases, ws=ws)
+
+    def wavelets_at(self, t):
+        return [
             Wavelet(cs[0], cs[1], kcs[0], kcs[1], phi[0] + tw[0] * t, phi[1] + tw[1] * t) for cs, kcs, phi, tw in
             zip(self.coefficients, self.kss, self.phases, self.time_weights)
         ]
@@ -99,17 +106,17 @@ class Pulse(StandingPulse):
             wavelets.append(Wavelet.generate_random_sine_wavelet())
 
         if ws is None:
-            ws = np.random.normal(-1, 1, size=(1, 2))
+            ws = np.random.normal(-1, 1, size=(n_cos + n_sin, 2))
 
         return Pulse.from_wavelets(wavelets, ws)
 
-    def __call__(self, x, t=0, bias=0):
+    def __call__(self, x, t: float=0, bias: float=0):
         y = bias
-        for wavelet in self.wavelets(t):
+        for wavelet in self.wavelets_at(t):
             y += wavelet(x)
         return y
 
-    def animate(self, xrange, t_range, bias=0, interval=50, grid=False, save_path=None):
+    def animate(self, xrange, t_range, bias: float=0, interval: int=50, grid: bool=False, save_path=None):
         fig, ax = plt.subplots()
         line, = ax.plot(xrange, self(xrange, t_range[0], bias))
         ax.set_xlim(xrange.min(), xrange.max())

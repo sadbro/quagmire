@@ -1,3 +1,3 @@
-from src.base import test_pulse
+from src.base import *
 
 test_pulse()

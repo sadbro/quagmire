@@ -1,2 +1,4 @@
 matplotlib
 numpy>=2
+pytest
+scipy
